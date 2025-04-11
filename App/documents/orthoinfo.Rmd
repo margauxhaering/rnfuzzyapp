@@ -1,5 +1,5 @@
 ---
-title: GO Enrichment informations
+title: Orthology search informations
 author: Haering Margaux, 2020, IBDM
 framework: bootstrap
 mode: selfcontained
@@ -36,15 +36,20 @@ g-table-intro h4 {
 
 
 
-## Gene Ids Conversion
+## Orthology search
 ---
+The orthology search part is based on gProfileR. 
 
-To convert your ids, just : </br>
-    - select your organism </br>
-    - choose your input type </br>
-    - choose your output type </br>
-    - paste your gene list </br>
-  
-And boom here are your translations. 
+To obtain orthologs in a certain organism, just paste a list of ids, choose your input organism and your target organism. 
 
 
+
+-  <u> As input </u> </br>
+Paste a list of ids of interest 
+
+
+
+
+
+<br/>
+<br/>
