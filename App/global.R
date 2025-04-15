@@ -48,7 +48,7 @@ BioCPackage("heatmaply")
 BioCPackage("gprofiler2")
 BioCPackage("Mfuzz")
 BioCPackage("e1071")
-
+BioCPackage('limma')
 
 
 
