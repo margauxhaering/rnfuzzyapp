@@ -26,7 +26,8 @@ output$DEAParams <- renderUI({
       "DEAmethod", "Analysis Method",
       c( TCC = "tcc",
          DESeq2 = "DESeq2",
-         edgeR = "edgeR")),
+         edgeR = "edgeR", 
+         limma = "limma")),
     conditionalPanel(
       condition = "input.DEAmethod == 'tcc'",
       uiOutput("TCCParams")
@@ -38,6 +39,10 @@ output$DEAParams <- renderUI({
     conditionalPanel(
       condition = "input.DEAmethod == 'edgeR'",
       uiOutput("edgeRParams")
+    ), 
+    conditionalPanel(
+      condition = "input.DEAmethod == 'limma'",
+      uiOutput("limmaParams")
     ), 
     do.call(actionBttn, c(           # run button 
       list(
@@ -62,7 +67,9 @@ output$TCCParams <- renderUI({# set of paramters for tcc method
       c(
         "edgeR" = "edger",
         "DESeq2" = "deseq2",
-        "baySeq" = "bayseq"
+        "baySeq" = "bayseq",
+        "SAMSeq" = "samseq",
+        "Voom" = "voom"
       ), selected = 'deseq2'),
     numericInput(
       inputId = "fdr",
@@ -70,7 +77,7 @@ output$TCCParams <- renderUI({# set of paramters for tcc method
       min = 0,
       value = 0.05,
       max = 1,
-      step = 0.0001
+      step = 0.001
     ),
     sliderInput(
       "floorpdeg",
@@ -78,7 +85,7 @@ output$TCCParams <- renderUI({# set of paramters for tcc method
       min = 0,
       max = 1,
       value = 0.05,
-      step = 0.01
+      step = 0.001
     )
   )
 })
@@ -89,7 +96,7 @@ output$DESeq2Params <- renderUI({ # set of paramters for deseq2 method
     "FDR Cut-Off",
     min = 0,
     max = 1,
-    value = 0.01
+    value = 0.05
   )
 })
 
@@ -107,11 +114,33 @@ output$edgeRParams <- renderUI({ # set of paramters for edgeR method
       inputId = "edgeRfdr",
       label = "FDR Cut-off",
       min = 0,
-      value = 0.001,
+      value = 0.05,
       max = 1,
-      step = 0.0001
+      step = 0.001
     ))
 })
+
+output$limmaParams <- renderUI({ # set of paramters for limma method 
+  tagList(
+    selectInput(
+      "limmaMethod",
+      "Normalization Method",
+      c("TMM" = "TMM",
+        "RLE" = "RLE",
+        "upperquartile" = "upperquartile",
+        "none" = "none")
+    ),
+    numericInput(
+      inputId = "limmafdr",
+      label = "FDR Cut-off",
+      min = 0,
+      value = 0.05,
+      max = 1,
+      step = 0.01
+    ))
+})
+
+
 observeEvent(input$DEA, {           # when the run button is clicked 
   progressSweetAlert(               # progress bar 
     session = session,
@@ -301,6 +330,75 @@ observeEvent(input$DEA, {           # when the run button is clicked
     var$DEAMETHOD <- 'edgeR'
 
   }
+  
+  
+  
+  
+  ################################################ limma method ###############################################
+  
+  
+  if(input$DEAmethod == "limma"){     # formatting for limma'''
+    tcc <-                           
+      new("TCC", var$newData, var$selectedgroups)
+    var$tccObject <- tcc             # just to get the groups for pca 
+    
+    dgList <- DGEList(counts=var$newData, group = var$selectedgroups)
+    
+    updateProgressBar(               # updating progress bar
+      session = session,
+      id = "DEAnalysisProgress",
+      title = "DE Analysis in progress...",
+      value = 25
+    )
+    
+    dgList <- calcNormFactors(dgList, method=input$limmaMethod)
+    
+    updateProgressBar(               # updating progress bar
+      session = session,
+      id = "DEAnalysisProgress",
+      title = "DE Analysis in progress...",
+      value = 50
+    )
+    
+    
+    var$design <- model.matrix(~var$selectedgroups)
+    v =voom(dgList, var$design, plot=F)
+    vfit <- lmFit(v, var$design)
+    efit <- eBayes(vfit, proportion = input$limmafdr)
+  
+    res <- topTable(efit, coef=2, number=Inf, sort.by="none")  
+    
+    var$result <- data.frame(row.names(res))
+    var$result['a.value'] <- res$AveExpr
+    var$result['m.value'] <- res$logFC
+    var$result['p.value'] <- res$P.Value
+    var$result['q.value'] <- res$adj.P.Val
+    names(var$result)[1] <- "gene_id"
+    
+    
+    
+    
+    
+    if (length(var$groupList2) != 2){
+      var$result <- var$result[,-2] # suppr log2fc
+      var$result <- var$result[,-2] # supp basemean
+    }
+    var$norData <- v$E
+    var$norDT <- var$norData
+    var$result["estimatedDEG"] = "0"
+    for (row in 1:nrow(var$result)){
+      if(var$result[row,'q.value'] <= as.numeric(input$limmafdr)){
+        var$result[row, 'estimatedDEG'] = "1"
+      }else{ 
+        var$result[row,'estimatedDEG'] = "0"
+      }}
+    var$limmaDEGs <- var$result[which(var$result$q.value <= as.numeric(input$limmafdr)),] 
+    var$limmaDEGs <- var$limmaDEGs[,-4]
+    var$genelist <- var$limmaDEGs[,1]
+    var$DEAMETHOD <- 'limma'
+    
+  }
+  
 ################################
 
   output$normresultTable <- DT::renderDataTable({  # normaliszed data table
@@ -394,6 +492,11 @@ observeEvent(input$DEA, {           # when the run button is clicked
       gene_id <- row.names(data)
       data <- cbind(data, gene_id = gene_id)
       resultTable <- merge(var$edgeRDEGs, data, by = "gene_id")
+    }
+    if(input$DEAmethod == "limma"){
+      gene_id <- row.names(data)
+      data <- cbind(data, gene_id = gene_id)
+      resultTable <- merge(var$limmaDEGs, data, by = "gene_id")
     }
     
     DT::datatable(
